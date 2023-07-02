@@ -1,92 +1,87 @@
+# Load assembly
 Add-Type -AssemblyName System.Windows.Forms
-Add-Type -AssemblyName System.Drawing
+[System.Windows.Forms.Application]::EnableVisualStyles()
 
-$ExcelFile = ""
-$SheetName = "Sheet1"
-$Recipients = @()
-$SMTPServer = "smtp.gmail.com"
-$SMTPPort = 587
-$SMTPUsername = "youremail@gmail.com"
-$SMTPPassword = "yourpassword"
-$From = "youremail@gmail.com"
-$Subject = "Email Subject"
-$BodyTemplate = Get-Content -Path "C:\Users\user\Documents\EmailBodyTemplate.html" -Raw
+# Define the form
+$Form = New-Object system.Windows.Forms.Form
+$Form.ClientSize = '400,400'
+$Form.text = "Form"
 
-$form = New-Object System.Windows.Forms.Form
-$form.Text = "Email Sender"
-$form.Size = New-Object System.Drawing.Size(400,400)
-$form.StartPosition = "CenterScreen"
+# Add labels and text boxes for necessary fields
+$Fields = 'Excel File Path', 'HTML File Path', 'SMTP Server', 'Port', 'Username', 'Password', 'From', 'Subject'
+$Top = 10
+foreach ($Field in $Fields) {
+    $Label = New-Object system.Windows.Forms.Label
+    $Label.text = "$Field:"
+    $Label.AutoSize = $true
+    $Label.width = 25
+    $Label.height = 10
+    $Label.location = New-Object System.Drawing.Point(10,$Top)
+    $Form.Controls.Add($Label)
 
-$label1 = New-Object System.Windows.Forms.Label
-$label1.Location = New-Object System.Drawing.Point(10,20)
-$label1.Size = New-Object System.Drawing.Size(280,20)
-$label1.Text = "Enter the email subject:"
-$form.Controls.Add($label1)
+    $TextBox = New-Object system.Windows.Forms.TextBox
+    $TextBox.multiline = $false
+    $TextBox.width = 250
+    $TextBox.height = 20
+    $TextBox.location = New-Object System.Drawing.Point(100,$Top)
+    $TextBox.Name = $Field -replace ' ', ''
+    $Form.Controls.Add($TextBox)
 
-$textbox1 = New-Object System.Windows.Forms.TextBox
-$textbox1.Location = New-Object System.Drawing.Point(10,40)
-$textbox1.Size = New-Object System.Drawing.Size(280,20)
-$form.Controls.Add($textbox1)
-
-$listbox1 = New-Object System.Windows.Forms.ListBox
-$listbox1.Location = New-Object System.Drawing.Point(10,70)
-$listbox1.Size = New-Object System.Drawing.Size(280,200)
-foreach ($Recipient in $Recipients) {
-    $listbox1.Items.Add($Recipient.EmailAddress)
+    $Top += 30
 }
-$form.Controls.Add($listbox1)
 
-$button3 = New-Object System.Windows.Forms.Button
-$button3.Location = New-Object System.Drawing.Point(10, 280)
-$button3.Size = New-Object System.Drawing.Size(75, 23)
-$button3.Text = "Select Excel File"
-$form.Controls.Add($button3)
+# Add button to start the email process
+$Button = New-Object system.Windows.Forms.Button
+$Button.text = "Start"
+$Button.width = 60
+$Button.height = 30
+$Button.location = New-Object System.Drawing.Point(170,$Top)
+$Button.Font = 'Microsoft Sans Serif,10'
 
-$button3.Add_Click({
-    $openFileDialog = New-Object System.Windows.Forms.OpenFileDialog
-    $openFileDialog.Filter = "Excel Files (*.xlsx)|*.xlsx|All files (*.*)|*.*"
-    $openFileDialog.Title = "Select an Excel File"
-    if ($openFileDialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
-        $ExcelFile=$openFileDialog.FileName
-        $Recipients=Import-Excel -Path $ExcelFile -WorksheetName $SheetName
-        foreach ($Recipient in $Recipients) {
-            $listbox1.Items.Add($Recipient.EmailAddress)
+# Actions to perform on button click
+$Button.Add_Click({
+    # Import the Excel module
+    Install-Module -Name ImportExcel -Force -AllowClobber
+
+    # Get the details from the form
+    $ExcelFilePath = $Form.Controls['ExcelFilePath'].Text
+    $HtmlFilePath = $Form.Controls['HTMLFilePath'].Text
+    $SmtpServer = $Form.Controls['SMTPServer'].Text
+    $Port = $Form.Controls['Port'].Text
+    $Username = $Form.Controls['Username'].Text
+    $Password = $Form.Controls['Password'].Text
+    $From = $Form.Controls['From'].Text
+    $Subject = $Form.Controls['Subject'].Text
+
+    # Import the Excel file
+    $EmailList = Import-Excel -Path $ExcelFilePath
+
+    # Read the contents of the HTML file
+    $HtmlTemplate = Get-Content -Path $HtmlFilePath -Raw
+
+    # Loop over each recipient in the Excel file
+    foreach ($Recipient in $EmailList) {
+        # Replace placeholders in the HTML template with actual values from the Excel file
+        $HtmlBody = $HtmlTemplate.Replace("{Name}", $Recipient.Name).Replace("{Address}", $Recipient.Address) # continue with other replacements as needed
+
+        # Specify the details for the email
+        $EmailDetails = @{
+            SmtpServer = $SmtpServer       # your SMTP server
+            Port = $Port                   # your SMTP server port
+            UseSsl = $true                 # depending on your server, this may need to be $false
+            Credential = New-Object System.Management.Automation.PSCredential ($Username, ($Password | ConvertTo-SecureString -AsPlainText -Force)) # your SMTP server username and password
+            From = $From                   # your email address
+            To = $Recipient.Email          # the recipient's email address
+            Subject = $Subject             # the email's subject
+            Body = $HtmlBody               # the email's body, as HTML
+            BodyAsHtml = $true             # specify that the body is HTML
         }
+
+        # Send the email
+        Send-MailMessage @EmailDetails
     }
 })
+$Form.Controls.Add($Button)
 
-$warningLabel=New-Object System.Windows.Forms.Label
-$warningLabel.Location=New-Object System.Drawing.Point(10,310)
-$warningLabel.Size=New-Object System.Drawing.Size(280,40)
-$warningLabel.Text="Warning: This application can be used to send emails to multiple recipients. Be careful when using this application and ensure that you have permission to send emails to the selected recipients."
-$form.Controls.Add($warningLabel)
-
-$button1 = New-Object System.Windows.Forms.Button
-$button1.Location = New-Object System.Drawing.Point(100,340)
-$button1.Size = New-Object System.Drawing.Size(75,23)
-$button1.Text = "Send"
-$button1.DialogResult = [System.Windows.Forms.DialogResult]::OK
-$form.AcceptButton = $button1
-$form.Controls.Add($button1)
-
-$button2 = New-Object System.Windows.Forms.Button
-$button2.Location = New-Object System.Drawing.Point(190,340)
-$button2.Size = New-Object System.Drawing.Size(75,23)
-$button2.Text = "Cancel"
-$button2.DialogResult = [System.Windows.Forms.DialogResult]::Cancel
-$form.CancelButton = $button2
-$form.Controls.Add($button2)
-
-$form.Topmost=$true
-
-$result=$form.ShowDialog()
-
-if ($result -eq [System.Windows.Forms.DialogResult]::OK) {
-    foreach ($EmailAddress in $listbox1.SelectedItems) {
-        $To=$EmailAddress.ToString()
-        $Body=$BodyTemplate -replace "__FirstName__", $Recipient.FirstName -replace "__LastName__", $Recipient.LastName -replace "__Email__", $Recipient.EmailAddress
-        Send-MailMessage -To $To -From $From -Subject $textbox1.Text -Body $Body -SmtpServer $SMTPServer -Port $SMTPPort
-    }
-}
-
-$form.Dispose()
+# Show the form
+[void]$Form.ShowDialog()
